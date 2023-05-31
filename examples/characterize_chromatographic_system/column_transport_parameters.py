@@ -13,11 +13,11 @@
 #     name: python3
 # ---
 
+import sys
 # %% tags=["remove-cell"]
 from pathlib import Path
-import sys
 
-root_dir = Path('../../../../').resolve()
+root_dir = Path('../../').resolve()
 sys.path.append(root_dir.as_posix())
 
 # %% [markdown]
@@ -39,18 +39,20 @@ sys.path.append(root_dir.as_posix())
 
 # %%
 import numpy as np
-data = np.loadtxt('experimental_data/non_pore_penetrating_tracer.csv', delimiter=',')
+
+data = np.loadtxt(r'/media/xoparad/Data/sciebo/RWTH/8_SoS_2023_MSc_Inf/CAMMP/CADET-Process/examples/characterize_chromatographic_system/experimental_data/non_pore_penetrating_tracer.csv', delimiter=',')
 
 time_experiment = data[:, 0]
 c_experiment = data[:, 1]
 
 from CADETProcess.reference import ReferenceIO
+
 tracer_peak = ReferenceIO(
     'Tracer Peak', time_experiment, c_experiment
 )
 
-if __name__ == '__main__':
-    _ = tracer_peak.plot()
+# if __name__ == '__main__':
+#     _ = tracer_peak.plot()
 
 # %% [markdown]
 # ### Reference Model
@@ -62,10 +64,11 @@ if __name__ == '__main__':
 
 # %%
 from CADETProcess.processModel import ComponentSystem
+
 component_system = ComponentSystem(['Non-penetrating Tracer'])
 
 # %%
-from CADETProcess.processModel import Inlet, Outlet, LumpedRateModelWithPores
+from CADETProcess.processModel import Inlet, LumpedRateModelWithPores, Outlet
 
 feed = Inlet(component_system, name='feed')
 feed.c = [0.0005]
@@ -75,14 +78,15 @@ eluent.c = [0]
 
 column = LumpedRateModelWithPores(component_system, name='column')
 
+#paramerters that we optimise. not all of them - length is given by the experiment
 column.length = 0.1
 column.diameter = 0.0077
 column.particle_radius = 34e-6
 
 column.axial_dispersion = 1e-8
 column.bed_porosity = 0.3
-column.particle_porosity = 0.8
-column.film_diffusion = [0]
+column.particle_porosity = 0
+column.film_diffusion = [1.0e-5]
 
 outlet = Outlet(component_system, name='outlet')
 
@@ -141,11 +145,12 @@ process.add_event(
 
 # %%
 from CADETProcess.simulator import Cadet
+
 simulator = Cadet()
 
-if __name__ == '__main__':
-    simulation_results = simulator.simulate(process)
-    _ = simulation_results.solution.outlet.inlet.plot()
+# if __name__ == '__main__':
+#     simulation_results = simulator.simulate(process)
+#     _ = simulation_results.solution.outlet.inlet.plot()
 
 # %% [markdown]
 # ### Comparator
@@ -158,15 +163,19 @@ comparator.add_reference(tracer_peak)
 comparator.add_difference_metric(
     'NRMSE', tracer_peak, 'outlet.outlet',
 )
+comparator.add_difference_metric(
+    'PeakPosition', tracer_peak, 'outlet.outlet',
+)
 
-if __name__ == '__main__':
-    comparator.plot_comparison(simulation_results)
+# if __name__ == '__main__':
+#     comparator.plot_comparison(simulation_results)
 
 # %% [markdown]
 # ### Optimization Problem
 
 # %%
 from CADETProcess.optimization import OptimizationProblem
+
 optimization_problem = OptimizationProblem('bed_porosity_axial_dispersion')
 
 optimization_problem.add_evaluation_object(process)
@@ -182,6 +191,12 @@ optimization_problem.add_variable(
     lb=1e-10, ub=0.1,
     transform='auto'
 )
+
+# optimization_problem.add_variable(
+#     name='particle_porosity', parameter_path='flow_sheet.column.particle_porosity',
+#     lb=0.2, ub=0.8,
+#     transform='auto'
+# )
 
 optimization_problem.add_evaluator(simulator)
 
@@ -205,8 +220,9 @@ optimization_problem.add_callback(callback, requires=[simulator])
 # ### Optimizer
 
 # %%
-from CADETProcess.optimization import U_NSGA3
-optimizer = U_NSGA3()
+#from CADETProcess.optimization import U_NSGA3
+
+#optimizer = U_NSGA3()
 
 # %% [markdown]
 # ```{note}
@@ -215,9 +231,63 @@ optimizer = U_NSGA3()
 # ```
 #
 # ```
-# if __name__ == '__main__':
-#     optimization_results = optimizer.optimize(
+#if __name__ == '__main__':
+#	optimization_results = optimizer.optimize(
 #         optimization_problem,
 #         use_checkpoint=True
 #     )
 # ```
+
+#from ax.service.managed_loop import optimize
+
+
+
+# if __name__ == '__main__':
+
+
+
+#     def eval_fun(parameterization):
+#         x = np.array([parameterization.get(f"x{i+1}") for i in range(2)])
+#         obj = optimization_problem.evaluate_objectives(x, untransform=True)
+
+#         return {"objective": (obj[0], 0.0)}
+
+
+
+# best_parameters, values, experiment, model = optimize(
+
+#     parameters=[
+#     {
+#     "name": "x1",
+#     "type": "range",
+#     "bounds": [0.0, 1.0],
+#     "value_type": "float", # Optional, defaults to inference from type of "bounds".
+#     "log_scale": False, # Optional, defaults to False.
+#     },
+#     {
+#     "name": "x2",
+#     "type": "range",
+#     "bounds": [0.0, 1.0],
+#     }
+#     ],
+#     experiment_name="test",
+#     objective_name="objective",
+#     evaluation_function=eval_fun,
+#     minimize=True, # Optional, defaults to False.
+#     total_trials=30, # Optional.
+#     )
+
+
+#axadapter test
+from CADETProcess.optimization import AxInterface
+optimizer = AxInterface()
+if __name__ == '__main__':
+    optimization_results = optimizer.optimize(
+        optimization_problem,
+        use_checkpoint=False
+    )
+
+
+#error = optimization_problem.evaluate_objectives(list(best_parameters.values()), untransform=True)
+#print(best_parameters)
+
